@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "realsense-toolbox"
+version = "0.1.0"
+authors = [
+  { name="Xu Kristen Yan", email="xkyan3@gmail.com" },
+]
+description = "This is a lightweight Intel RealSense camera interface that supports various functionalities commonly used in robotics research."
+readme = "README.md"
+requires-python = ">=3.10"
+
+dependencies = [
+    "numpy>=2.2.6",
+    "open3d>=0.19.0",
+    "opencv-python>=4.11.0.86",
+    "pyrealsense2>=2.56.5.9235",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
