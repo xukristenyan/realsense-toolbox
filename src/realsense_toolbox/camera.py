@@ -14,7 +14,7 @@ class Camera:
         rs_config = config.get("specifications", {})
         self.rs_camera = RealSenseCamera(self.serial, rs_config)
 
-        if config.get("enable_viewer", False):
+        if config.get("enable_viewer", True):
             conf = config.get("viewer", {})
             viewer_config = {
                 "show_color": conf.get("show_color", True),
