@@ -14,7 +14,7 @@ class Camera:
         rs_config = config.get("specifications", {})
         self.rs_camera = RealSenseCamera(self.serial, rs_config)
 
-        if config.get("enable_viewer"):
+        if config.get("enable_viewer", False):
             conf = config.get("viewer", {})
             viewer_config = {
                 "show_color": conf.get("show_color", True),
@@ -25,7 +25,7 @@ class Camera:
         else:
             self.viewer = None
 
-        if config.get("enable_recorder"):
+        if config.get("enable_recorder", False):
             conf = config.get("recorder", {})
             save_time = time.strftime("%Y%m%d_%H%M%S")
             recorder_config = {
