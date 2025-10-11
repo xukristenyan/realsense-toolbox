@@ -77,7 +77,7 @@ You need to provide configuration for your customized camera usage. These are th
 
 ```python
 camera_config = {
-    "enable_viewer": False,             # set to True if you need a window to see live streaming images
+    "enable_viewer": True,             # set to True if you need a window to see live streaming images
     "enable_recorder": False,           # set to True if you need to record the camera streaming
     
     "specifications": {
