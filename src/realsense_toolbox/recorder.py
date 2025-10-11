@@ -38,16 +38,13 @@ class Recorder:
         
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 
-        # Plain Color Stream
         plain_path = os.path.join(self.session_dir, f"cam_{self.serial[-3:]}_color.mp4")
         self.plain_writer = cv2.VideoWriter(plain_path, fourcc, self.fps, (width, height))
 
-        # Depth Stream (saved as a single-channel 16-bit video)
         depth_path = os.path.join(self.session_dir, f"cam_{self.serial[-3:]}_depth.mp4")
         self.depth_writer = cv2.VideoWriter(depth_path, fourcc, self.fps, (width, height))
 
         if self.save_with_overlays:
-            # Overlay Color Stream
             overlay_path = os.path.join(self.session_dir, f"cam_{self.serial[-3:]}_overlay.mp4")
             self.overlay_writer = cv2.VideoWriter(overlay_path, fourcc, self.fps, (width, height))
         
@@ -81,7 +78,7 @@ class Recorder:
             if self.depth_writer: self.depth_writer.release()
 
             if self.overlay_writer:
-                if self.overlay_writer: self.overlay_writer.release()
+                self.overlay_writer.release()
 
             self.is_recording = False
 
