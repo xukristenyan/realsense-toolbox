@@ -43,6 +43,12 @@ class Camera:
         self.is_alive = False
         self.recording_started = False
 
+        self.color_image = None 
+        self.depth_image = None 
+        self.color_frame = None 
+        self.depth_frame = None
+
+
     def launch(self):
         self.rs_camera.launch()
         self.is_alive = True
@@ -53,37 +59,46 @@ class Camera:
         Fetches the latest frames and updates the viewer and recorder.
         This is meant to be called from an external loop.
         '''
-        color_image, depth_image, color_frame, depth_frame = self.rs_camera.get_current_state()
+        self.color_image, self.depth_image, self.color_frame, self.depth_frame = self.rs_camera.get_current_state()
 
-        if color_image is not None and depth_image is not None:
+        if self.color_image is not None and self.depth_image is not None:
 
             if self.recorder:
-                if not self.auto_start:
-                    if not self.recording_started and start_keypress():
+                if not self.recording_started:
+                    if self.auto_start:
                         self.recording_started = True
-                        print(f"[Recorder] Recording started !!!")
+                        print(f"[Recorder] {self.serial[-3:]} Recording started !!!")
 
-                    if self.recording_started and end_keypress():
-                        self.recording_started = False
-                        print(f"[Recorder] Recording stopped !!!")
-
-                else:
-                    if not self.recording_started:
+                    elif start_keypress():
                         self.recording_started = True
-                        print(f"[Recorder] Recording started !!!")
+                        print(f"[Recorder] {self.serial[-3:]} Recording started !!!")
 
                 if self.recording_started:
-                    self.recorder.update(color_image, depth_image, overlays)
+                    self.recorder.update(self.color_image, self.depth_image, overlays)
+
+                    if end_keypress():
+                        self.recording_started = False
+                        print(f"[Recorder] {self.serial[-3:]} Recording stopped !!!")
 
             if self.viewer:
-                self.viewer.update(color_image, depth_image, overlays)
+                self.viewer.update(self.color_image, self.depth_image, overlays)
                 if not self.viewer.viewer_alive:
                     self.is_alive = False
 
-        return color_image, depth_image, color_frame, depth_frame
+
+    def get_current_state(self):
+        return self.color_image, self.depth_image, self.color_frame, self.depth_frame
+
+
+    def get_images(self):
+        return self.rs_camera.get_images()
 
 
     def shutdown(self):
         if self.recorder:
             self.recorder.stop()
         self.rs_camera.shutdown()
+
+
+    def control_recording(self, start):
+        self.recording_started = start
