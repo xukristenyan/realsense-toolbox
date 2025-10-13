@@ -5,7 +5,7 @@ from .utils import quit_keypress, draw_overlays, adjust_depth_image
 
 
 class Viewer:
-    def __init__(self, serial, config: dict):
+    def __init__(self, serial, config):
         self.serial = serial
         self.show_color = config["show_color"]
         self.show_depth = config["show_depth"]

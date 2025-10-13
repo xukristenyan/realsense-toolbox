@@ -11,7 +11,7 @@ class Recorder:
         - depth stream
         - color stream with overlays (optional)
     '''
-    def __init__(self, serial, config: dict):
+    def __init__(self, serial, config):
         self.serial = serial
         self.save_dir = config["save_dir"]
         self.save_name = config["save_name"]

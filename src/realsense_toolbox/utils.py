@@ -24,4 +24,17 @@ def adjust_depth_image(image):
 
 def quit_keypress():
     key = cv2.waitKey(1)
-    return key == 27    # ESC
+    # press ESC
+    return key == 27
+
+
+def start_keypress():
+    key = cv2.waitKey(1)
+    # press s
+    return key == ord('s')
+
+
+def end_keypress():
+    key = cv2.waitKey(1)
+    # press e
+    return key == ord('e')

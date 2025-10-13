@@ -26,7 +26,8 @@ def main():
             "save_dir": "./recordings",
             "save_name": "test",
             "fps": 10,
-            "save_with_overlays": False
+            "save_with_overlays": False,
+            "auto_start": True          # if False, press 's' to start recording at any time point
         }
     }
     cam2_config = {
@@ -37,7 +38,8 @@ def main():
             "save_dir": "./recordings",
             "save_name": "test",
             "fps": 10,
-            "save_with_overlays": True
+            "save_with_overlays": True,
+            "auto_start": True          # if False, press 's' to start recording at any time point
         }
     }
     # ========================
