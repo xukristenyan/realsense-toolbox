@@ -77,7 +77,7 @@ You need to provide configuration for your customized camera usage. These are th
 
 ```python
 camera_config = {
-    "enable_viewer": True,             # set to True if you need a window to see live streaming images
+    "enable_viewer": False,             # set to True if you need a window to see live streaming images
     "enable_recorder": False,           # set to True if you need to record the camera streaming
     
     "specifications": {
@@ -99,6 +99,7 @@ camera_config = {
         "save_dir": "./recordings",
         "save_name": current_time,
         "save_with_overlays": False,
+        "auto_start": True,             # applicable to set False ONLY when viewer is enabled. If False, press s to start recording at any time point during the experiment.
     }
 }
 

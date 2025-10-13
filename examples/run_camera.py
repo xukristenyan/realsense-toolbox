@@ -28,9 +28,10 @@ def main():
 
         "recorder": {                   # no need to keep this dict if "enable_recorder" is False
             "save_dir": "./recordings",
-            "save_name": "my_third_session",
+            "save_name": "test_session",
             "fps": 10,
-            "save_with_overlays": True
+            "save_with_overlays": True,
+            "auto_start": False         # if False, press 's' to start recording at any time point
         }
     }
     # ========================
