@@ -97,13 +97,13 @@ class PointCloudGenerator():
         return o3d_pcd
 
 
-    def save(self, o3d_pcd, save_dir, filename="point_cloud.ply"):
+    def save(self, o3d_pcd, save_dir, filename="point_cloud.pcd"):
         if o3d_pcd.is_empty():
             print("No point cloud to save")
             return
 
-        if not filename.endswith(".ply"):
-            filename += ".ply"
+        if not filename.endswith(".pcd"):
+            filename += ".pcd"
 
         save_path = Path(save_dir)
         save_path.mkdir(parents=True, exist_ok=True)
