@@ -4,7 +4,7 @@ from realsense_toolbox import PointCloudGenerator
 
 def main():
     # ===== YOUR CHANGES =====
-    serial = "YOUR SERIAL"
+    serial = "244622072715"
 
     # see readme for full configurations.
     specs = {

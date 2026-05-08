@@ -7,12 +7,12 @@ from realsense_toolbox.camera import Camera
 def main():
 
     # ===== YOUR CHANGES =====
-    serial = "YOUR SERIAL"
+    serial = "244622072715"
 
     # see readme for full configurations.
     camera_config = {
         "enable_viewer": True,
-        "enable_recorder": True,
+        "enable_recorder": False,
 
         "specifications": {
             "fps": 30,

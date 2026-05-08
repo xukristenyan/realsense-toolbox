@@ -19,6 +19,7 @@ class RealSenseCamera:
         self.height = config.get("height", 480)
         self.color_auto_exposure = config.get("color_auto_exposure", True)
         self.depth_auto_exposure = config.get("depth_auto_exposure", True)
+        self.get_stereo = config.get("get_stereo", False)
 
         self._pipeline = rs.pipeline()
         self._config = rs.config()
@@ -45,9 +46,15 @@ class RealSenseCamera:
     def launch(self):
         try:
             self._config.enable_device(self.serial)
-            self._config.enable_stream(rs.stream.color, self.width, self.height, rs.format.bgr8, self.fps)
-            self._config.enable_stream(rs.stream.depth, self.width, self.height, rs.format.z16, self.fps)
 
+            if not self.get_stereo:
+                self._config.enable_stream(rs.stream.color, self.width, self.height, rs.format.bgr8, self.fps)
+                self._config.enable_stream(rs.stream.depth, self.width, self.height, rs.format.z16, self.fps)
+
+            else:
+                self._config.enable_stream(rs.stream.infrared, 1, self.width, self.height, rs.format.y8, self.fps)  # Left
+                self._config.enable_stream(rs.stream.infrared, 2, self.width, self.height, rs.format.y8, self.fps)  # Left
+            
             profile = self._pipeline.start(self._config)
 
             self._get_and_store_intrinsics(profile)
@@ -70,15 +77,23 @@ class RealSenseCamera:
 
             print(f"[RealSense {self.serial[-3:]}] Launched!")
 
-        except:
-            print(f"[RealSense {self.serial[-3:]}] Failed to launch. Check camera connection!")
+        except Exception as e:
+            print(f"[RealSense {self.serial[-3:]}] Failed to launch. Check camera connection! ({type(e).__name__}: {e})")
 
 
     def _get_and_store_intrinsics(self, profile):
 
-        color_profile = rs.video_stream_profile(profile.get_stream(rs.stream.color))
-        intr = color_profile.get_intrinsics()
-        
+        if self.get_stereo:
+            left_profile = rs.video_stream_profile(profile.get_stream(rs.stream.infrared, 1))
+            right_profile = rs.video_stream_profile(profile.get_stream(rs.stream.infrared, 2))
+            intr = left_profile.get_intrinsics()
+            extr = left_profile.get_extrinsics_to(right_profile)
+            baseline = float(abs(extr.translation[0]))
+        else:
+            color_profile = rs.video_stream_profile(profile.get_stream(rs.stream.color))
+            intr = color_profile.get_intrinsics()
+            baseline = None
+
         self.intrinsics = {
             "raw": intr,
             "fx": intr.fx,
@@ -90,7 +105,8 @@ class RealSenseCamera:
                 [intr.fx, 0, intr.ppx],
                 [0, intr.fy, intr.ppy],
                 [0, 0, 1]
-            ])
+            ]),
+            "baseline": baseline,
         }
 
 
@@ -102,20 +118,34 @@ class RealSenseCamera:
                     continue
 
                 aligned_frames = self._align.process(frames)
-                color_frame = aligned_frames.get_color_frame()
-                depth_frame = aligned_frames.get_depth_frame()
+                if not self.get_stereo:
+                    color_frame = aligned_frames.get_color_frame()
+                    depth_frame = aligned_frames.get_depth_frame()
 
-                if not color_frame or not depth_frame:
-                    continue
-                
-                for filter in self._filters:
-                    depth_frame = filter.process(depth_frame)
+                    if not color_frame or not depth_frame:
+                        continue
+                    
+                    for filter in self._filters:
+                        depth_frame = filter.process(depth_frame)
 
-                with self._lock:
-                    self.color_frame = color_frame
-                    self.depth_frame = depth_frame
-                    self.color_image = np.asanyarray(color_frame.get_data())
-                    self.depth_image = np.asanyarray(depth_frame.get_data())
+                    with self._lock:
+                        self.color_frame = color_frame
+                        self.depth_frame = depth_frame
+                        self.color_image = np.asanyarray(color_frame.get_data())
+                        self.depth_image = np.asanyarray(depth_frame.get_data())
+
+                else:
+                    left_frame = frames.get_infrared_frame(1)
+                    right_frame = frames.get_infrared_frame(2)
+
+                    if not left_frame or not right_frame:
+                        continue
+
+                    with self._lock:
+                        self.color_frame = left_frame
+                        self.depth_frame = right_frame
+                        self.color_image = np.asanyarray(left_frame.get_data())
+                        self.depth_image = np.asanyarray(right_frame.get_data())
 
             except Exception as e:
                 print(f"[RealSense {self.serial[-3:]}] Error in camera thread: {e}")
