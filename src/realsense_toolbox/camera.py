@@ -1,104 +1,93 @@
-import time
+from .config import CameraConfig
 from .realsense import RealSenseCamera
 from .viewer import Viewer
 from .recorder import Recorder
-from .utils import start_keypress, end_keypress
 
 
 class Camera:
-    '''
-    A high-level container for a single RealSense device managing its core camera stream, viewer, and recorder components.
-    '''
-    def __init__(self, serial, config):
+    """
+    High-level facade: RealSenseCamera + optional Viewer + optional Recorder.
+
+    Pure orchestration — no keyboard input, no recording auto-trigger. The
+    caller (or CameraSystem) decides when to start/stop recording.
+
+    Typical use:
+        cam = Camera(serial, CameraConfig(
+            realsense=RealSenseConfig(streams=["color", "depth"]),
+            viewer=ViewerConfig(show=["color"]),
+        ))
+        cam.launch()
+        while cam.is_alive:
+            streams = cam.get_observations(overlays=...)
+        cam.shutdown()
+    """
+
+    def __init__(self, serial, config=None):
         self.serial = serial
 
-        rs_config = config.get("specifications", {})
-        self.rs_camera = RealSenseCamera(self.serial, rs_config)
+        if config is None:
+            config = CameraConfig()
+        elif isinstance(config, dict):
+            config = CameraConfig(**config)
+        self.cfg = config
 
-        if config.get("enable_viewer", True):
-            conf = config.get("viewer", {})
-            viewer_config = {
-                "show_color": conf.get("show_color", True),
-                "show_depth": conf.get("show_depth", False),
-                "fps": conf.get("fps", 30)
-            }
-            self.viewer = Viewer(self.serial, viewer_config)
-        else:
-            self.viewer = None
+        self.rs_camera = RealSenseCamera(serial, self.cfg.realsense)
+        self.viewer = Viewer(serial, self.cfg.viewer) if self.cfg.viewer is not None else None
+        self.recorder = Recorder(serial, self.cfg.recorder) if self.cfg.recorder is not None else None
 
-        if config.get("enable_recorder", False):
-            conf = config.get("recorder", {})
-            save_time = time.strftime("%Y%m%d_%H%M%S")
-            recorder_config = {
-                "save_dir": conf.get("save_dir", "./recordings"),
-                "save_name": conf.get("save_name", f"{save_time}"),
-                "fps": conf.get("fps", 10),
-                "save_with_overlays": conf.get("save_with_overlays", False),
-            }
-            self.recorder = Recorder(self.serial, recorder_config)
-            self.auto_start = conf.get("auto_start", True)
-        else:
-            self.recorder = None
-
-        self.is_alive = False
-        self.recording_started = False
-
-        self.color_image = None 
-        self.depth_image = None 
-        self.color_frame = None 
-        self.depth_frame = None
+        self._is_alive = False
 
 
     def launch(self):
         self.rs_camera.launch()
-        self.is_alive = True
+        self._is_alive = True
 
 
-    def update(self, overlays=None):
-        '''
-        Fetches the latest frames and updates the viewer and recorder.
-        This is meant to be called from an external loop.
-        '''
-        self.color_image, self.depth_image, self.color_frame, self.depth_frame = self.rs_camera.get_current_state()
+    def get_observations(self, overlays=None):
+        """Return the latest stream snapshot from the camera and, as a side
+        effect, push it to the viewer and recorder if they're enabled.
 
-        if self.color_image is not None and self.depth_image is not None:
-
-            if self.recorder:
-                if not self.recording_started:
-                    if self.auto_start:
-                        self.recording_started = True
-                        print(f"[Recorder] {self.serial[-3:]} Recording started !!!")
-
-                    elif start_keypress():
-                        self.recording_started = True
-                        print(f"[Recorder] {self.serial[-3:]} Recording started !!!")
-
-                if self.recording_started:
-                    self.recorder.update(self.color_image, self.depth_image, overlays)
-
-                    if end_keypress():
-                        self.recording_started = False
-                        print(f"[Recorder] {self.serial[-3:]} Recording stopped !!!")
-
-            if self.viewer:
-                self.viewer.update(self.color_image, self.depth_image, overlays)
-                if not self.viewer.viewer_alive:
-                    self.is_alive = False
+        Call this once per loop iteration. Returns the streams dict
+        (matching RealSenseCamera.get_current_state()).
+        """
+        streams = self.rs_camera.get_current_state()
+        if self.viewer is not None:
+            self.viewer.update(streams, overlays=overlays)
+        if self.recorder is not None:
+            self.recorder.update(streams, overlays=overlays)
+        return streams
 
 
-    def get_current_state(self):
-        return self.color_image, self.depth_image, self.color_frame, self.depth_frame
+    def start_recording(self):
+        if self.recorder is None:
+            return
+        rs_cfg = self.rs_camera.cfg
+        calibration = {
+            "intrinsics": self.rs_camera.intrinsics,
+            "depth_scale": self.rs_camera.depth_scale,
+            "streams": list(rs_cfg.streams),
+            "ir_emitter": rs_cfg.ir_emitter,
+            "camera_fps": rs_cfg.fps,
+            "width": rs_cfg.width,
+            "height": rs_cfg.height,
+        }
+        self.recorder.start(calibration=calibration)
 
 
-    def get_images(self):
-        return self.rs_camera.get_images()
+    def stop_recording(self):
+        if self.recorder is not None:
+            self.recorder.stop()
 
 
     def shutdown(self):
-        if self.recorder:
+        if self.recorder is not None:
             self.recorder.stop()
+        if self.viewer is not None:
+            self.viewer.shutdown()
         self.rs_camera.shutdown()
+        self._is_alive = False
 
 
-    def control_recording(self, start):
-        self.recording_started = start
+    @property
+    def is_alive(self):
+        return self._is_alive

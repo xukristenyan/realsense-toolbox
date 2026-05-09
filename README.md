@@ -1,132 +1,208 @@
-# RealSense Toolbox 🚀
+# RealSense Toolbox
 
-A flexible, modular Python toolbox for interfacing with Intel RealSense depth cameras. This toolbox is designed to simplify multi-camera setups, live viewing, and complex recording sessions through a clean, configuration-driven architecture.
-
-## Features & Architecture
-
-This framework is built to provide a clean, non-blocking interface for complex camera operations.
-
-### Key Features
-
-* **Multi-Camera Support**: Natively designed to manage multiple RealSense devices concurrently.
-* **Thread-Safe Streaming**: Each camera operates in a dedicated background thread to ensure non-blocking frame acquisition.
-* **Modular Design**: Functionality is cleanly separated into a core camera driver, a real-time viewer, and a data recorder.
-* **Configuration-Driven**: System and camera properties are defined in a clear configuration file, allowing for easy setup changes without modifying code.
-* **Real-time Visualization**: An optional, efficient viewer (powered by OpenCV) can display color and depth streams for one or more cameras.
-* **Flexible Recording**: An optional recorder can save color/depth streams and metadata to disk.
-* **Built-in Processing**: Includes automatic frame alignment (depth to color) and applies a series of configurable filters to enhance depth data quality.
-
-### System Architecture
-
-The framework is organized into a clear hierarchy of classes, where each level abstracts the complexity of the one below it.
-
-1.  **`RealSenseCamera`**: The lowest-level class. It is a thread-safe wrapper that directly manages a single RealSense device. Its sole responsibility is to connect to the device, continuously acquire and process frames, and provide thread-safe access to the latest data (images, frames, intrinsics).
-
-2.  **`Viewer` & `Recorder`**: These are optional, modular components that perform specific tasks. The `Viewer` handles rendering frames to the screen, while the `Recorder` handles writing frames to disk.
-
-3.  **`Camera`**: This class acts as a high-level container for a single, complete camera setup. It instantiates and coordinates one `RealSenseCamera` object along with its optional `Viewer` and `Recorder` modules.
-
-4.  **`System`**: The top-level manager. This class is responsible for managing a collection of `Camera` objects, allowing you to launch, update, and shut down an entire multi-camera system with simple commands.
-
+A small Python toolbox for streaming, viewing, and recording from Intel RealSense D4xx cameras. Built around composable, typed configs; supports synchronized multi-camera setups and Fast-FoundationStereo-replay-friendly recording (lossless IR pair + calibration).
 
 ## Installation
 
-### Step 1: Clone this repo
-
-Clone this repo
+Requires Python 3.10. The RealSense SDK (`pyrealsense2`) is a dependency.
 
 ```bash
-# With HTTP
 git clone https://github.com/xukristenyan/realsense-toolbox.git
-
-# With SSH
-git clone git@github.com:xukristenyan/realsense-toolbox.git
+cd realsense-toolbox
+uv sync
 ```
 
-### Step 2: Install
+Or to use as an editable dependency in another project:
 
 ```bash
-# using uv
-uv add --editable [path/to/realsense-toolbox]
+# uv
+uv add --editable /path/to/realsense-toolbox
 
-# using pip
-pip install -e [path/to/realsense-toolbox]
+# pip
+pip install -e /path/to/realsense-toolbox
 ```
 
-## Usage
-
-### Command Lines as Examples
-
-```bash
-# get images
-uv run examples/run_realsense.py
-
-# live view + recording
-uv run examples/run_camera.py
-
-# deal with multiple cameras in the environment
-uv run examples/run_system.py
-
-# generate pointcloud
-uv run examples/run_point_cloud.py
-```
-
-### Default Camera Settings
-
-You need to provide configuration for your customized camera usage. These are the default settings. You can only include those parameters different from the default values in your configuration.
+## Quick start
 
 ```python
-camera_config = {
-    "enable_viewer": False,             # set to True if you need a window to see live streaming images
-    "enable_recorder": False,           # set to True if you need to record the camera streaming
-    
-    "specifications": {
-        "fps": 30,
-        "width": 640,
-        "height": 480,
-        "color_auto_exposure": True,
-        "depth_auto_exposure": True,
-    },
-    
-    "viewer": {                         # update this dict with your preference if viewer enabled
-        "fps": 30,
-        "show_color": True,
-        "show_depth": False,
-    },
-    
-    "recorder": {                       # update this dict with your preference if recorder enabled 
-        "fps": 10,
-        "save_dir": "./recordings",
-        "save_name": current_time,
-        "save_with_overlays": False,
-        "auto_start": True,             # applicable to set False ONLY when viewer is enabled. If False, press s to start recording at any time point during the experiment.
-    }
-}
+from realsense_toolbox import (
+    Camera, CameraConfig, RealSenseConfig, ViewerConfig, KeyListener,
+)
 
-overlays_config = [
-    {"type": "dot",
-     "xy": xy,
-     "radius": 6,
-     "color": (0, 255, 0)
-     },
-    {"type": "text",
-     "content": text,
-     "position": (50, 50),
-     "color": (0, 0, 255)
-     }
-]
+cam = Camera("244622072715", CameraConfig(
+    realsense=RealSenseConfig(streams=["color", "depth"]),
+    viewer=ViewerConfig(show=["color", "depth"]),
+))
 
-pointcloud_config = {
-    "enable_depth_filter": True,
-    "min_depth": 0.1,
-    "max_depth": 2.0,
-
-    "enable_prune": False,
-    "bbox_min": [0.1, -0.8, -0.01],     # x, y, z min ranges
-    "bbox_max": [0.8, 0.8, 0.9],        # x, y, z max ranges
-
-    "enable_downsample": False,
-    "voxel_size": 0.01                  # unit: meter
-}
-
+cam.launch()
+try:
+    with KeyListener() as keys:
+        while cam.is_alive:
+            cam.get_observations()
+            if keys.consume_pressed("esc"):
+                break
+finally:
+    cam.shutdown()
 ```
+
+More patterns in `examples/`.
+
+## Architecture
+
+| Class | Role |
+|---|---|
+| `RealSenseCamera` | Direct `pyrealsense2` wrapper. Captures frames in a background thread; exposes them as numpy arrays via `get_current_state()`. |
+| `Viewer` | Display sink. Accepts a streams dict and renders selected streams side-by-side in one OpenCV window. |
+| `Recorder` | File sink. Accepts a streams dict; writes per-stream files (mp4 or npz) plus calibration when applicable. |
+| `Camera` | Single-camera orchestrator. Composes `RealSenseCamera` + optional `Viewer` + optional `Recorder`. Exposes `get_observations()`, `start_recording()`, `stop_recording()`. |
+| `CameraSystem` | Multi-camera coordinator. Broadcasts the same orchestration across N cameras. |
+| `KeyListener` | Terminal-stdin keyboard reader (utils). Edge-triggered; consume each press once. |
+
+The orchestrator is a pure facade — no keyboard polling, no auto-recording. The caller drives the loop.
+
+## Configuration
+
+Four dataclasses. Each accepts a dict alternative (the constructor normalizes dicts → dataclasses).
+
+### `RealSenseConfig` — camera capture
+
+```python
+@dataclass
+class RealSenseConfig:
+    streams: list[str] = ["color", "depth"]      # subset of {"color", "depth", "ir_stereo"}
+    fps: int = 30
+    width: int = 640
+    height: int = 480
+    color_auto_exposure: bool = True
+    depth_auto_exposure: bool = True
+    ir_emitter: bool | None = None               # None = auto: True iff "depth" in streams
+```
+
+Stream IDs:
+- `"color"` — RGB (BGR8). Acts as the alignment target when `"depth"` is also enabled.
+- `"depth"` — on-device depth (Z16), aligned to color when `"color"` is enabled.
+- `"ir_stereo"` — left + right IR pair (Y8). For external stereo (e.g. Fast-FoundationStereo).
+
+### `ViewerConfig` — display window
+
+```python
+@dataclass
+class ViewerConfig:
+    show: list[str] = ["color"]                  # subset of {"color", "depth", "left_ir", "right_ir"}
+    fps: int = 30                                # display rate cap
+```
+
+### `RecorderConfig` — file output
+
+```python
+@dataclass
+class RecorderConfig:
+    streams: list[str] = ["color"]               # subset of {"color", "depth", "ir_stereo"}
+    save_dir: str = "./recordings"
+    save_name: str | None = None                 # None = auto-timestamp at start()
+    fps: int = 10                                # frames sampled per second (decoupled from camera fps)
+    save_with_overlays: bool = False
+```
+
+### `CameraConfig` — top-level
+
+```python
+@dataclass
+class CameraConfig:
+    realsense: RealSenseConfig | dict = RealSenseConfig()
+    viewer:    ViewerConfig | dict | None = None        # None disables the viewer
+    recorder:  RecorderConfig | dict | None = None      # None disables the recorder
+```
+
+## Examples
+
+| File | Use case |
+|---|---|
+| `examples/stream_only.py` | Direct `RealSenseCamera`. Saves N frames; SSH-friendly. |
+| `examples/view_live.py` | `Camera` + `Viewer`. Live display; ESC to quit. |
+| `examples/record_headless.py` | `Camera` + `Recorder`. KeyListener-driven start/stop; no viewer. |
+| `examples/view_and_record.py` | All three. Live display + on-demand recording. |
+| `examples/record_for_ffs.py` | IR-stereo capture for offline FoundationStereo replay. |
+| `examples/multi_camera.py` | `CameraSystem` with synchronized recording across two cameras. |
+
+Run any of them with `uv run examples/<name>.py`.
+
+## Recording outputs
+
+Files saved under `{save_dir}/{save_name}/`. Names always carry a `cam_<last3-of-serial>_` prefix so multiple cameras don't collide.
+
+| File | Created when |
+|---|---|
+| `cam_<last3>_color.mp4` | `"color"` in streams (lossy h264, ~5 MB/min @ 10 fps) |
+| `cam_<last3>_color.npz` | `"color"` AND `"ir_stereo"` in streams (lossless uint8, ~80 MB/min @ 10 fps) |
+| `cam_<last3>_depth.mp4` | `"depth"` in streams (lossy colormap, visual review only) |
+| `cam_<last3>_left_ir.npz` | `"ir_stereo"` in streams (lossless uint8) |
+| `cam_<last3>_right_ir.npz` | `"ir_stereo"` in streams (lossless uint8) |
+| `cam_<last3>_overlay.mp4` | `save_with_overlays=True` and `"color"` in streams |
+| `cam_<last3>_calibration.json` | `"ir_stereo"` in streams |
+
+### Why color gets two formats in IR-stereo mode
+
+Recording IR stereo signals an intent to preserve data for offline use (FFS replay, SAM2 on color, photometric analysis, etc.). The Recorder upgrades color to bit-exact `.npz` while still writing `.mp4` for quick visual review. ~10× larger than mp4-only, but no compression artifacts.
+
+### `cam_<last3>_calibration.json` fields
+
+```json
+{
+    "K_canonical": [[fx, 0, ppx], [0, fy, ppy], [0, 0, 1]],
+    "K_ir":        [[fx, 0, ppx], [0, fy, ppy], [0, 0, 1]],
+    "baseline": 0.050036,
+    "depth_scale": 0.001,
+    "ir_to_color_R": [[...]],
+    "ir_to_color_t": [tx, ty, tz],
+    "streams": ["color", "ir_stereo"],
+    "ir_emitter": false,
+    "camera_fps": 30,
+    "recorder_fps": 10,
+    "width": 640,
+    "height": 480
+}
+```
+
+`K_canonical` is whichever stream the camera reports first by priority `color > ir_stereo > depth`. `K_ir` and the IR↔color extrinsics are present whenever IR stereo is enabled.
+
+## Offline Fast-FoundationStereo replay
+
+After recording with `streams=["color", "ir_stereo"]`, the saved files are self-contained for offline depth re-inference:
+
+```python
+import numpy as np, json
+from your_ffs_client import FFSClient
+
+session = "recordings/ffs_trial"
+calib = json.load(open(f"{session}/cam_715_calibration.json"))
+left  = np.load(f"{session}/cam_715_left_ir.npz")["frames"]
+right = np.load(f"{session}/cam_715_right_ir.npz")["frames"]
+
+client = FFSClient()
+client.set_intrinsics(np.array(calib["K_ir"]), calib["baseline"])
+
+for i in range(len(left)):
+    out = client.infer(left[i], right[i], returns=("depth",))
+    depth = out["depth"]
+    # ...
+```
+
+The IR images are bit-exact to capture, so the result is identical to running FFS live during recording.
+
+## Overlays
+
+`Camera.get_observations(overlays=...)` and `Viewer.update`/`Recorder.update` accept an optional list of overlay dicts. Overlays are drawn on the **color** panel only.
+
+```python
+overlays = [
+    {"type": "dot",  "xy": (320, 240), "radius": 6, "color": (0, 255, 0)},
+    {"type": "text", "content": "trial_42", "position": (50, 50), "color": (0, 0, 255)},
+]
+cam.get_observations(overlays=overlays)
+```
+
+## Notes
+
+- **IR projector & FFS.** The dot pattern can degrade neural-net stereo output on textured scenes. `record_for_ffs.py` defaults to `ir_emitter=False`. Test both on your specific scenes.
+- **Memory cost during recording.** npz streams (color+IR in FFS mode) are buffered in RAM until `stop_recording()` flushes them. Roughly 250–500 MB per minute for an IR pair at 10 fps. Long sessions can pressure RAM — split into multiple shorter recordings if needed.

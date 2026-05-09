@@ -1,66 +1,76 @@
 from .camera import Camera
-from .utils import start_keypress, end_keypress
 
 
 class CameraSystem:
-    '''
-    To easily manage multiple Camera objects in an environment.
-    '''
-    def __init__(self, system_config: dict):
-        self.cameras = {}
+    """Coordinates multiple Camera objects.
 
-        self.auto_start = True
-        self.recording_started = False
+    Pure fan-out — broadcasts start_recording / stop_recording / shutdown
+    to every camera; aggregates per-camera state for is_alive and
+    get_observations(). Does not own a KeyListener: the caller decides
+    when to trigger recording.
 
-        for serial, config in system_config.items():
-            self.cameras[serial] = Camera(serial, config)
+    Typical use:
+        system = CameraSystem({
+            "244622072715": CameraConfig(realsense=..., recorder=...),
+            "244622072716": CameraConfig(realsense=..., recorder=...),
+        })
+        system.launch()
+        with KeyListener() as keys:
+            while system.is_alive:
+                system.get_observations()
+                if keys.consume_pressed("s"):    system.start_recording()
+                if keys.consume_pressed("e"):    system.stop_recording()
+                if keys.consume_pressed("esc"):  break
+        system.shutdown()
+    """
 
-            if config.get("enable_recorder", False) and not config.get("recorder", {}).get("auto_start", True):
-                self.auto_start = False
+    def __init__(self, configs):
+        if not configs:
+            raise ValueError("CameraSystem requires at least one camera config")
+        self.cameras = {serial: Camera(serial, cfg) for serial, cfg in configs.items()}
+        self._launched = False
 
 
     def launch(self):
-        for serial, camera in self.cameras.items():
-            camera.launch()
-        self.is_alive = True
+        for cam in self.cameras.values():
+            cam.launch()
+        self._launched = True
+        print(f"[System] launched {len(self.cameras)} camera(s)")
 
-        print("[System] All cameras launched!")
+
+    def get_observations(self, overlays_by_serial=None):
+        """Tick every camera. Returns {serial: streams_dict}."""
+        overlays_by_serial = overlays_by_serial or {}
+        return {
+            serial: cam.get_observations(overlays=overlays_by_serial.get(serial))
+            for serial, cam in self.cameras.items()
+        }
 
 
-    def update(self, overlays_by_serial=None):
-        if overlays_by_serial is None:
-            overlays_by_serial = {}
-            
-        all_frames = {}
+    def start_recording(self):
+        for cam in self.cameras.values():
+            cam.start_recording()
 
-        if not self.auto_start:
-            if not self.recording_started and start_keypress():
-                self.recording_started = True
-                for serial, camera in self.cameras.items():
-                    camera.control_recording(True)
 
-            if self.recording_started and end_keypress():
-                self.recording_started = False
-                for serial, camera in self.cameras.items():
-                    camera.control_recording(False)
-
-        for serial, camera in self.cameras.items():
-            camera_overlays = overlays_by_serial.get(serial, None)
-
-            camera.update(overlays=camera_overlays)
-
-            if not camera.is_alive:
-                self.is_alive = False
-
-            color, depth, color_frame, depth_frame = camera.get_current_state()
-            if color is not None and depth is not None:
-                all_frames[serial] = (color, depth, color_frame, depth_frame)
-        
-        return all_frames
+    def stop_recording(self):
+        for cam in self.cameras.values():
+            cam.stop_recording()
 
 
     def shutdown(self):
-        for camera in self.cameras.values():
-            camera.shutdown()
+        for cam in self.cameras.values():
+            cam.shutdown()
+        self._launched = False
+        print("[System] shutdown complete")
 
-        print("[System] Shutdown complete.")
+
+    @property
+    def is_alive(self):
+        if not self._launched:
+            return False
+        for cam in self.cameras.values():
+            if not cam.is_alive:
+                return False
+            if cam.viewer is not None and not cam.viewer.is_window_open():
+                return False
+        return True
